@@ -1,0 +1,103 @@
+#include <SoftwareSerial.h>
+
+SoftwareSerial NodeMcu_SoftSerial(D1,D2); // RX, TX
+
+#include <DHT.h>
+#define BLYNK_PRINT Serial
+#define BLYNK_TEMPLATE_ID "TMPL3_uSWbdB0"
+#define BLYNK_TEMPLATE_NAME "Smart Agriculture"
+char auth[] = "08HSHBGfNPa53CbXaFQIOWsqQ-c4xDhP"; // Replace with your Blynk authentication token
+char ssid[] = "NR";     // Replace with your phone hotspot SSID
+char pass[] = "niki2711"; // Replace with your phone hotspot password
+
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+
+#define soil A0
+
+DHT dht(D4, DHT11);
+#define RELAY_PIN_1 D3
+#define VPIN_BUTTON_1 V12
+void checkPhysicalButton();
+int relay1State = LOW;
+int pushButton1State = HIGH;
+char c;
+String dataIn;
+float h = 51;
+float t = 26.3;
+int value = 47;
+int buttonState = 0;
+int buttonState1 = 0;
+
+void setup() {
+  Serial.begin(57600);
+  NodeMcu_SoftSerial.begin(9600);
+  dht.begin();
+  // Connect to WiFi using phone hotspot
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, pass);
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+  Serial.print("IP Address");
+  Serial.print(WiFi.localIP());
+  delay(5000);
+  Blynk.begin(auth, ssid, pass, "blynk.cloud", 80);
+}
+void DHT11sensor(){
+  h = dht.readHumidity();
+  t = dht.readTemperature();
+  if(h==1023){h=0;}
+  if( isnan(h) || isnan(t))
+  {
+      Serial.println("Failed to read from DHT sensor");
+      return;
+  }
+  Serial.print("Humidity: ");
+  Serial.print(h);
+  Serial.print("Temperature:");
+  Serial.print(t);
+  Blynk.virtualWrite(V0, t);
+  Blynk.virtualWrite(V1,h);
+}
+void soilMoistureSensor(){
+  value = analogRead(soil);
+  value = map(value,0,1024,0,100);
+  // value = (value - 100) * -1;
+  Serial.print("Soil Moisture: ");
+  Serial.print(value);
+  Serial.print("%");
+  Blynk.virtualWrite(V2, value);
+}
+BLYNK_CONNECTED(){
+    Blynk.syncVirtual(VPIN_BUTTON_1);
+}
+BLYNK_WRITE(VPIN_BUTTON_1) {
+  buttonState = param.asInt();
+  Serial.print("Button State: ");
+  Serial.println(buttonState);
+  if (buttonState == HIGH) {
+    Serial.println("Button ON");
+  } else {
+    Serial.println("Button OFF");
+  }
+}
+void loop() {
+    // Call functions to read dht sensor and soil moisture sensor values
+    DHT11sensor();
+    soilMoistureSensor();
+    // Send the humidity, temperature and soil moisture values read from sensors to arduino board via serial communication
+    NodeMcu_SoftSerial.print(h);         // Send humidity value on serial tx
+    NodeMcu_SoftSerial.print("\t");      // Send a tab character as a delimiter between values
+    NodeMcu_SoftSerial.print(t);         // Send temperature value on serial tx
+    NodeMcu_SoftSerial.print("\t");      // Send a tab character as a delimiter between values
+    NodeMcu_SoftSerial.print(value);     // Send soil moisture value on serial tx
+    NodeMcu_SoftSerial.print("\t");      // Send a tab character as a delimiter between values
+    NodeMcu_SoftSerial.print(buttonState);     // Send soil moisture value on serial tx
+    NodeMcu_SoftSerial.print("\n");      // Send newline character as the end of serial communication package
+    delay(3000);
+    // Update the values on the mobile app
+    Blynk.run();
+}
